@@ -4,6 +4,7 @@ import { createNetworkCapture } from './network-capture.js';
 import { attachDebuggerEventCapture } from './debugger-events.js';
 import { createCookiesClient } from './cookies-client.js';
 import { createStorageClient } from './storage-client.js';
+import { createPageNavigation } from './page-navigation.js';
 
 export function createToolExecutor(chromeApi = chrome, captures = {}) {
   // autoAttach: false keeps the debugger off until a tool needs it (background service worker:
@@ -15,6 +16,7 @@ export function createToolExecutor(chromeApi = chrome, captures = {}) {
   if (!captures.skipAttachEvents && chromeApi.debugger?.onEvent) attachDebuggerEventCapture(chromeApi, { consoleCapture, networkCapture });
   const cookiesClient = captures.cookiesClient ?? createCookiesClient(chromeApi);
   const storageClient = captures.storageClient ?? createStorageClient(chromeApi);
+  const navigation = createPageNavigation(chromeApi);
 
   // Auto-start network capture
   networkCapture.start();
@@ -158,6 +160,8 @@ export function createToolExecutor(chromeApi = chrome, captures = {}) {
         return { ...tab, debuggerAttached: attachedTabs.has(tab.id) };
       }
       if (tool === 'tabs.list') return { tabs: await chromeApi.tabs.query({}) };
+      if (tool === 'tabs.create') return navigation.create(params);
+      if (tool === 'tabs.close') return navigation.close(params);
       if (tool === 'console.clearLogBuffer') { consoleCapture.clear(); return { cleared: true }; }
       if (tool === 'network.startCapture') {
         networkCapture.start();
@@ -201,6 +205,8 @@ export function createToolExecutor(chromeApi = chrome, captures = {}) {
           const [result] = await chromeApi.scripting.executeScript({ target: { tabId }, func: () => document.documentElement.outerHTML });
           return { html: result.result };
         }
+        case 'page.getLinks':
+          return navigation.links(tabId);
         case 'page.getSelection': {
           const [result] = await chromeApi.scripting.executeScript({ target: { tabId }, func: () => String(globalThis.getSelection?.() ?? '') });
           return { selection: result.result };
