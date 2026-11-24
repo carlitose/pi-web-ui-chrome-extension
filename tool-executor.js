@@ -6,6 +6,9 @@ import { createCookiesClient } from './cookies-client.js';
 import { createStorageClient } from './storage-client.js';
 
 export function createToolExecutor(chromeApi = chrome, captures = {}) {
+  // autoAttach: false keeps the debugger off until a tool needs it (background service worker:
+  // no permanent "debugging this browser" banner on every tab the user activates).
+  const autoAttach = captures.autoAttach !== false;
   const debuggerClient = createDebuggerClient(chromeApi);
   const consoleCapture = captures.consoleCapture ?? createConsoleCapture();
   const networkCapture = captures.networkCapture ?? createNetworkCapture();
@@ -98,12 +101,12 @@ export function createToolExecutor(chromeApi = chrome, captures = {}) {
       console.log(`[ToolExecutor] Debugger detached from tab ${source.tabId}: ${reason}`);
       attachedTabs.delete(source.tabId);
       captures.onDetach?.(source.tabId, reason);
-      startReattachRetry(source.tabId);
+      if (autoAttach) startReattachRetry(source.tabId);
     });
   }
 
   // Register tab activation listener for auto-attach
-  if (chromeApi.tabs?.onActivated) {
+  if (autoAttach && chromeApi.tabs?.onActivated) {
     chromeApi.tabs.onActivated.addListener(async (activeInfo) => {
       const tabId = activeInfo.tabId;
       if (!attachedTabs.has(tabId) && !reattachTimers.has(tabId)) {
@@ -119,7 +122,7 @@ export function createToolExecutor(chromeApi = chrome, captures = {}) {
   }
 
   // Auto-attach to the active tab on startup
-  (async () => {
+  if (autoAttach) (async () => {
     try {
       console.log('[ToolExecutor] Auto-attaching debugger to active tab on startup');
       const tab = await debuggerClient.getCurrentTab();
